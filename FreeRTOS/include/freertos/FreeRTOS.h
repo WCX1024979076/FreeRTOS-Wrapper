@@ -1165,6 +1165,10 @@
  * are set.  Its contents are somewhat obfuscated in the hope users will
  * recognise that it would be unwise to make direct use of the structure members.
  */
+#if ( configTHREAD_LOCAL_STORAGE_DELETE_CALLBACKS )
+typedef void (*TlsDeleteCallbackFunction_t)( int, void * );
+#endif
+
 typedef struct xSTATIC_TCB
 {
     struct rt_thread thread;
@@ -1177,6 +1181,12 @@ typedef struct xSTATIC_TCB
     #endif
     #if ( INCLUDE_xTaskAbortDelay == 1 )
         uint8_t ucDelayAborted;
+    #endif
+    #if ( configNUM_THREAD_LOCAL_STORAGE_POINTERS > 0 )
+        void * pvThreadLocalStoragePointers[ configNUM_THREAD_LOCAL_STORAGE_POINTERS ];
+    #if ( configTHREAD_LOCAL_STORAGE_DELETE_CALLBACKS )
+        TlsDeleteCallbackFunction_t pvThreadLocalStoragePointersDelCallback[ configNUM_THREAD_LOCAL_STORAGE_POINTERS ];
+    #endif
     #endif
 } StaticTask_t;
 

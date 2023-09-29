@@ -418,6 +418,11 @@ BaseType_t xQueueGenericSendFromISR( QueueHandle_t xQueue,
         }
     }
 
+    if ( pxHigherPriorityTaskWoken != NULL )
+    {
+        *pxHigherPriorityTaskWoken = pdFALSE;
+    }
+    
     return rt_err_to_freertos( err );
 }
 /*-----------------------------------------------------------*/

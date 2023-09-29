@@ -65,6 +65,12 @@ typedef struct tskTaskControlBlock
     #if ( INCLUDE_xTaskAbortDelay == 1 )
         uint8_t ucDelayAborted;
     #endif
+    #if ( configNUM_THREAD_LOCAL_STORAGE_POINTERS > 0 )
+        void * pvThreadLocalStoragePointers[ configNUM_THREAD_LOCAL_STORAGE_POINTERS ];
+    #if ( configTHREAD_LOCAL_STORAGE_DELETE_CALLBACKS )
+        TlsDeleteCallbackFunction_t pvThreadLocalStoragePointersDelCallback[ configNUM_THREAD_LOCAL_STORAGE_POINTERS ];
+    #endif
+    #endif
 } tskTCB;
 typedef tskTCB TCB_t;
 
@@ -212,6 +218,18 @@ static void prvInitialiseNewTask( TaskFunction_t pxTaskCode,
 #if ( configUSE_TASK_NOTIFICATIONS == 1 )
     rt_memset( ( void * ) &( pxNewTCB->ulNotifiedValue[ 0 ] ), 0x00, sizeof( pxNewTCB->ulNotifiedValue ) );
     rt_memset( ( void * ) &( pxNewTCB->ucNotifyState[ 0 ] ), 0x00, sizeof( pxNewTCB->ucNotifyState ) );
+#endif
+
+#if ( configNUM_THREAD_LOCAL_STORAGE_POINTERS != 0 )
+    {
+        for(UBaseType_t x = 0; x < ( UBaseType_t ) configNUM_THREAD_LOCAL_STORAGE_POINTERS; x++ )
+        {
+            pxNewTCB->pvThreadLocalStoragePointers[ x ] = NULL;
+            #if ( configTHREAD_LOCAL_STORAGE_DELETE_CALLBACKS == 1)
+            pxNewTCB->pvThreadLocalStoragePointersDelCallback[ x ] = NULL;
+            #endif
+        }
+    }
 #endif
 
 #if ( INCLUDE_xTaskAbortDelay == 1 )
@@ -1245,28 +1263,78 @@ TaskHandle_t xTaskGetIdleTaskHandleForCPU( UBaseType_t cpuid )
 /* Unimplemented */
 #include "esp_log.h"
 static const char *TAG = "freertos";
-#if ( configNUM_THREAD_LOCAL_STORAGE_POINTERS > 0 )
-void vTaskSetThreadLocalStoragePointer( TaskHandle_t xTaskToSet,
+#if ( configNUM_THREAD_LOCAL_STORAGE_POINTERS != 0 )
+
+#if ( configTHREAD_LOCAL_STORAGE_DELETE_CALLBACKS )
+
+    void vTaskSetThreadLocalStoragePointerAndDelCallback( TaskHandle_t xTaskToSet, BaseType_t xIndex, void *pvValue , TlsDeleteCallbackFunction_t xDelCallback)
+    {
+    TCB_t *pxTCB;
+
+        if( xIndex < configNUM_THREAD_LOCAL_STORAGE_POINTERS )
+        {
+            rt_base_t level;
+            level = rt_hw_interrupt_disable();
+
+            pxTCB = prvGetTCBFromHandle( xTaskToSet );
+            pxTCB->pvThreadLocalStoragePointers[ xIndex ] = pvValue;
+            pxTCB->pvThreadLocalStoragePointersDelCallback[ xIndex ] = xDelCallback;
+
+            rt_hw_interrupt_enable(level);
+        }
+    }
+
+    void vTaskSetThreadLocalStoragePointer( TaskHandle_t xTaskToSet, BaseType_t xIndex, void *pvValue )
+    {
+        vTaskSetThreadLocalStoragePointerAndDelCallback( xTaskToSet, xIndex, pvValue, (TlsDeleteCallbackFunction_t)NULL );
+    }
+
+
+#else
+    void vTaskSetThreadLocalStoragePointer( TaskHandle_t xTaskToSet,
                                             BaseType_t xIndex,
                                             void * pvValue )
-{
-    ESP_LOGE(TAG, "vTaskSetThreadLocalStoragePointer unimplemented");
-    configASSERT(0);
-}
-void * pvTaskGetThreadLocalStoragePointer( TaskHandle_t xTaskToQuery,
+    {
+        TCB_t * pxTCB;
+
+        if( xIndex < configNUM_THREAD_LOCAL_STORAGE_POINTERS )
+        {
+            rt_base_t level;
+            level = rt_hw_interrupt_disable();
+
+            pxTCB = prvGetTCBFromHandle( xTaskToSet );
+            pxTCB->pvThreadLocalStoragePointers[ xIndex ] = pvValue;
+
+            rt_hw_interrupt_enable(level);
+        }
+    }
+#endif /* configTHREAD_LOCAL_STORAGE_DELETE_CALLBACKS */
+
+#endif /* configNUM_THREAD_LOCAL_STORAGE_POINTERS */
+/*-----------------------------------------------------------*/
+
+#if ( configNUM_THREAD_LOCAL_STORAGE_POINTERS != 0 )
+
+    void * pvTaskGetThreadLocalStoragePointer( TaskHandle_t xTaskToQuery,
                                                BaseType_t xIndex )
-{
-    ESP_LOGE(TAG, "pvTaskGetThreadLocalStoragePointer unimplemented");
-    configASSERT(0);
-    return NULL;
-}
-#if ( configTHREAD_LOCAL_STORAGE_DELETE_CALLBACKS )
-typedef void (*TlsDeleteCallbackFunction_t)( int, void * );
-void vTaskSetThreadLocalStoragePointerAndDelCallback( TaskHandle_t xTaskToSet, BaseType_t xIndex, void *pvValue, TlsDeleteCallbackFunction_t pvDelCallback)
-{
-    ESP_LOGE(TAG, "vTaskSetThreadLocalStoragePointerAndDelCallback unimplemented");
-    configASSERT(0);
-}
-#endif
-#endif
-#endif
+    {
+        void * pvReturn = NULL;
+        TCB_t * pxTCB;
+
+        if( xIndex < configNUM_THREAD_LOCAL_STORAGE_POINTERS )
+        {
+            pxTCB = prvGetTCBFromHandle( xTaskToQuery );
+            pvReturn = pxTCB->pvThreadLocalStoragePointers[ xIndex ];
+        }
+        else
+        {
+            pvReturn = NULL;
+        }
+
+        pvReturn = NULL;
+        return pvReturn;
+    }
+
+#endif /* configNUM_THREAD_LOCAL_STORAGE_POINTERS */
+#endif /* ESP_PLATFORM */
+// TODO: 参照 pthread_tls.c 来进行实现
